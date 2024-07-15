@@ -1,0 +1,18 @@
+{
+  "name": "@BL-CZY/malti_search-win32-x64-msvc",
+  "version": "0.0.0",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "malti_search.win32-x64-msvc.node",
+  "files": [
+    "malti_search.win32-x64-msvc.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}
