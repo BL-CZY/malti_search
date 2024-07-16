@@ -1,5 +1,5 @@
 {
-  "name": "@BL-CZY/malti_search-win32-x64-msvc",
+  "name": "@jg-tpl/malti_search-win32-x64-msvc",
   "version": "0.0.0",
   "os": [
     "win32"

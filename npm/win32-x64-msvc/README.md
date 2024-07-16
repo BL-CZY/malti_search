@@ -1,3 +1,3 @@
-# `@BL-CZY/malti_search-win32-x64-msvc`
+# `@jg-tpl/malti_search-win32-x64-msvc`
 
-This is the **x86_64-pc-windows-msvc** binary for `@BL-CZY/malti_search`
+This is the **x86_64-pc-windows-msvc** binary for `@jg-tpl/malti_search`
