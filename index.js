@@ -310,7 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { search, editDistance } = nativeBinding
+const { getWord, search, editDistance } = nativeBinding
 
+module.exports.getWord = getWord
 module.exports.search = search
 module.exports.editDistance = editDistance
