@@ -1,4 +1,5 @@
 use super::CLIENT;
+use crate::structs::SearchEntry;
 use crate::utils;
 use mongodb::{
     bson::{doc, Document},
@@ -7,9 +8,13 @@ use mongodb::{
 use serde_json::{self, json};
 use std::collections::HashSet;
 
-fn index_search(keyword: &str, tokens_col: &Collection<Document>, filter: Document) -> Vec<String> {
+fn index_search(
+    keyword: &str,
+    tokens_col: &Collection<Document>,
+    filter: Document,
+) -> Vec<SearchEntry> {
     let mut cursor: Cursor<Document>;
-    let mut result: Vec<String> = vec![];
+    let mut result: Vec<SearchEntry> = vec![];
     println!("searching {}", keyword);
 
     match tokens_col.find(filter, None) {
@@ -26,7 +31,7 @@ fn index_search(keyword: &str, tokens_col: &Collection<Document>, filter: Docume
         if let Ok(document) = res {
             if let Some(val) = document.get("word") {
                 if let Some(v) = val.as_str() {
-                    result.push(v.into());
+                    result.push(SearchEntry::from_key_match(v, keyword));
                     println!("found {}", v);
                 }
             }
@@ -38,9 +43,9 @@ fn index_search(keyword: &str, tokens_col: &Collection<Document>, filter: Docume
 
 // returns true if the limit is 0
 fn filter_res(
-    search: &Vec<String>,
-    result: &mut Vec<String>,
-    found: &mut HashSet<String>,
+    search: &Vec<SearchEntry>,
+    result: &mut Vec<SearchEntry>,
+    found: &mut HashSet<SearchEntry>,
     skip_count: &mut u32,
     limit_count: &mut u32,
 ) -> bool {
@@ -67,20 +72,30 @@ fn filter_res(
 // returns true if the limit is 0
 fn handle_index_search(
     keyword: &str,
-    found: &mut HashSet<String>,
+    found: &mut HashSet<SearchEntry>,
     skip_count: &mut u32,
     limit_count: &mut u32,
-    result: &mut Vec<String>,
+    result: &mut Vec<SearchEntry>,
     col: &Collection<Document>,
     filter: Document,
 ) -> bool {
-    let search_res: Vec<String> = index_search(keyword, &col, filter);
+    let search_res: Vec<SearchEntry> = index_search(keyword, &col, filter);
     filter_res(&search_res, result, found, skip_count, limit_count)
 }
 
-fn regular_search(keyword: &str, tokens_col: &Collection<Document>, max_dis: u32) -> Vec<String> {
-    let mut result: Vec<String> = vec![];
-    let mut temp_result: Vec<(String, u32)> = vec![];
+fn push_word(doc: &Document, matched: &str, distance: u32, result: &mut Vec<(SearchEntry, u32)>) {
+    if let Ok(val) = doc.get_str("word") {
+        result.push((SearchEntry::from_key_match(val, matched), distance));
+    }
+}
+
+fn regular_search(
+    keyword: &str,
+    tokens_col: &Collection<Document>,
+    max_dis: u32,
+) -> Vec<SearchEntry> {
+    let mut result: Vec<SearchEntry> = vec![];
+    let mut temp_result: Vec<(SearchEntry, u32)> = vec![];
     let mut cursor;
     match tokens_col.find(None, None) {
         Ok(res) => cursor = res,
@@ -95,7 +110,7 @@ fn regular_search(keyword: &str, tokens_col: &Collection<Document>, max_dis: u32
             if let Ok(val) = doc.get_str("exact") {
                 let dis = utils::levdistance(val, keyword);
                 if dis <= max_dis {
-                    temp_result.push((val.into(), dis));
+                    push_word(&doc, val, dis, &mut temp_result);
                 }
             }
         }
@@ -104,8 +119,8 @@ fn regular_search(keyword: &str, tokens_col: &Collection<Document>, max_dis: u32
     temp_result.sort_by(|a, b| a.1.cmp(&b.1));
 
     for (str, dis) in temp_result.iter() {
-        result.push(str.into());
-        println!("found word {} with edit distance {}", str, dis);
+        result.push(str.clone());
+        println!("found word {:?} with edit distance {}", str, dis);
     }
 
     result
@@ -113,24 +128,24 @@ fn regular_search(keyword: &str, tokens_col: &Collection<Document>, max_dis: u32
 
 fn handle_regular_search(
     keyword: &str,
-    found: &mut HashSet<String>,
+    found: &mut HashSet<SearchEntry>,
     skip_count: &mut u32,
     limit_count: &mut u32,
-    result: &mut Vec<String>,
+    result: &mut Vec<SearchEntry>,
     col: &Collection<Document>,
     max_dis: u32,
 ) -> bool {
-    let search_res: Vec<String> = regular_search(keyword, col, max_dis);
+    let search_res: Vec<SearchEntry> = regular_search(keyword, col, max_dis);
     filter_res(&search_res, result, found, skip_count, limit_count)
 }
 
 // returns true if limit reaches 0
 fn handle_keyword(
     keyword: &str,
-    found: &mut HashSet<String>,
+    found: &mut HashSet<SearchEntry>,
     skip_count: &mut u32,
     limit_count: &mut u32,
-    result: &mut Vec<String>,
+    result: &mut Vec<SearchEntry>,
     db: &Database,
     max_dis: u32,
 ) -> bool {
@@ -162,13 +177,46 @@ fn handle_keyword(
     false
 }
 
+pub fn fill_data(coll: &Collection<Document>, result: &mut SearchEntry) {
+    let doc = if let Ok(Some(res)) = coll.find_one(
+        doc! {
+            "word": result.key.clone(),
+        },
+        None,
+    ) {
+        res
+    } else {
+        return;
+    };
+
+    result.word = if let Ok(val) = doc.get_str("surf") {
+        val.into()
+    } else {
+        return;
+    };
+
+    result.pos = if let Ok(val) = doc.get_str("pos") {
+        val.into()
+    } else {
+        return;
+    };
+
+    if let Ok(arr) = doc.get_array("en") {
+        for ele in arr.iter() {
+            if let Some(res) = ele.as_str() {
+                result.en.push(res.into());
+            }
+        }
+    }
+}
+
 #[napi]
 pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String {
     let db = CLIENT.database("local");
 
     let keywords: Vec<&str> = query_str.split('-').collect::<Vec<&str>>();
-    let mut found: HashSet<String> = HashSet::new();
-    let mut result: Vec<String> = vec![];
+    let mut found: HashSet<SearchEntry> = HashSet::new();
+    let mut result: Vec<SearchEntry> = vec![];
     let mut skip_count: u32 = skip;
     let mut limit_count: u32 = limit;
 
@@ -191,9 +239,15 @@ pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String 
         }
     }
 
+    let word_coll: Collection<Document> = db.collection("words");
+
+    for entry in result.iter_mut() {
+        fill_data(&word_coll, entry);
+    }
+
     print!("result is: ");
     for str in result.iter() {
-        print!("{}, ", str);
+        print!("{:?}, ", str);
     }
     println!("");
 

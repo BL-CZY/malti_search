@@ -5,4 +5,11 @@
 
 export declare function getWord(word: string): string
 export declare function search(queryStr: string, skip: number, limit: number, maxDis: number): string
+export interface SearchEntry {
+  key: string
+  word: string
+  pos: string
+  en: Array<string>
+  matched: string
+}
 export declare function editDistance(a: string, b: string): number
