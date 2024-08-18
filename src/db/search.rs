@@ -214,7 +214,7 @@ pub fn fill_data(coll: &Collection<Document>, result: &mut SearchEntry) {
 pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String {
     let db = CLIENT.database("local");
 
-    let keywords: Vec<&str> = query_str.split('-').collect::<Vec<&str>>();
+    let keyword = query_str.replace("-", " ");
     let mut found: HashSet<SearchEntry> = HashSet::new();
     let mut result: Vec<SearchEntry> = vec![];
     let mut skip_count: u32 = skip;
@@ -225,19 +225,15 @@ pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String 
         query_str, skip, limit, max_dis
     );
 
-    for keyword in keywords {
-        if handle_keyword(
-            keyword,
-            &mut found,
-            &mut skip_count,
-            &mut limit_count,
-            &mut result,
-            &db,
-            max_dis,
-        ) {
-            break;
-        }
-    }
+    handle_keyword(
+        &keyword,
+        &mut found,
+        &mut skip_count,
+        &mut limit_count,
+        &mut result,
+        &db,
+        max_dis,
+    );
 
     let word_coll: Collection<Document> = db.collection("words");
 
