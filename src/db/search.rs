@@ -1,45 +1,15 @@
-use super::CLIENT;
-use crate::structs::SearchEntry;
+use super::{
+    context::{append_context, collect_context_words},
+    CLIENT,
+};
 use crate::utils;
+use crate::{db::context::SEARCH_CONTEXT, structs::SearchEntry};
 use mongodb::{
     bson::{doc, Document},
-    sync::{Collection, Cursor, Database},
+    sync::{Collection, Database},
 };
 use serde_json::{self, json};
 use std::collections::HashSet;
-
-fn index_search(
-    keyword: &str,
-    tokens_col: &Collection<Document>,
-    filter: Document,
-) -> Vec<SearchEntry> {
-    let mut cursor: Cursor<Document>;
-    let mut result: Vec<SearchEntry> = vec![];
-    println!("searching {}", keyword);
-
-    match tokens_col.find(filter, None) {
-        Ok(cur) => {
-            cursor = cur;
-        }
-        Err(_) => {
-            println!("there is an error trying to find the keyword {}", keyword);
-            return vec![];
-        }
-    }
-
-    while let Some(res) = cursor.next() {
-        if let Ok(document) = res {
-            if let Some(val) = document.get("word") {
-                if let Some(v) = val.as_str() {
-                    result.push(SearchEntry::from_key_match(v, keyword));
-                    println!("found {}", v);
-                }
-            }
-        }
-    }
-
-    result
-}
 
 // returns true if the limit is 0
 fn filter_res(
@@ -48,7 +18,7 @@ fn filter_res(
     found: &mut HashSet<SearchEntry>,
     skip_count: &mut u32,
     limit_count: &mut u32,
-) -> bool {
+) {
     for res in search.iter() {
         if !found.contains(res) {
             if *skip_count != 0 {
@@ -58,29 +28,15 @@ fn filter_res(
                 if *limit_count != 0 {
                     *limit_count -= 1;
                 } else {
-                    return true;
+                    #[cfg(feature = "log")]
+                    println!("limit {} reached", limit_count);
+                    return;
                 }
             }
             result.push(res.clone());
             found.insert(res.clone());
         }
     }
-
-    false
-}
-
-// returns true if the limit is 0
-fn handle_index_search(
-    keyword: &str,
-    found: &mut HashSet<SearchEntry>,
-    skip_count: &mut u32,
-    limit_count: &mut u32,
-    result: &mut Vec<SearchEntry>,
-    col: &Collection<Document>,
-    filter: Document,
-) -> bool {
-    let search_res: Vec<SearchEntry> = index_search(keyword, &col, filter);
-    filter_res(&search_res, result, found, skip_count, limit_count)
 }
 
 fn push_word(doc: &Document, matched: &str, distance: u32, result: &mut Vec<(SearchEntry, u32)>) {
@@ -100,6 +56,7 @@ fn regular_search(
     match tokens_col.find(None, None) {
         Ok(res) => cursor = res,
         Err(_) => {
+            #[cfg(feature = "log")]
             println!("there is an error trying to find the keyword {}", keyword);
             return vec![];
         }
@@ -120,6 +77,7 @@ fn regular_search(
 
     for (str, dis) in temp_result.iter() {
         result.push(str.clone());
+        #[cfg(feature = "log")]
         println!("found word {:?} with edit distance {}", str, dis);
     }
 
@@ -134,9 +92,9 @@ fn handle_regular_search(
     result: &mut Vec<SearchEntry>,
     col: &Collection<Document>,
     max_dis: u32,
-) -> bool {
+) {
     let search_res: Vec<SearchEntry> = regular_search(keyword, col, max_dis);
-    filter_res(&search_res, result, found, skip_count, limit_count)
+    filter_res(&search_res, result, found, skip_count, limit_count);
 }
 
 // returns true if limit reaches 0
@@ -148,21 +106,16 @@ fn handle_keyword(
     result: &mut Vec<SearchEntry>,
     db: &Database,
     max_dis: u32,
-) -> bool {
-    if handle_index_search(
-        keyword,
-        found,
-        skip_count,
-        limit_count,
-        result,
-        &db.collection("tokens"),
-        doc! { "exact": keyword },
-    ) {
-        return true;
+) {
+    if let Ok(res) = collect_context_words(keyword, skip_count, limit_count) {
+        *result = res;
+        #[cfg(feature = "log")]
+        println!("Found the result in the search context: {:?}", result);
+        return;
     }
 
     // regular search
-    if handle_regular_search(
+    handle_regular_search(
         keyword,
         found,
         skip_count,
@@ -170,11 +123,17 @@ fn handle_keyword(
         result,
         &db.collection("tokens"),
         max_dis,
-    ) {
-        return true;
-    }
+    );
 
-    false
+    // update context
+    append_context(keyword, result);
+
+    #[cfg(feature = "log")]
+    println!(
+        "Updated the Search Context with word: \"{}\" to {:?}",
+        keyword,
+        SEARCH_CONTEXT.lock()
+    );
 }
 
 pub fn fill_data(coll: &Collection<Document>, result: &mut SearchEntry) {
@@ -220,6 +179,7 @@ pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String 
     let mut skip_count: u32 = skip;
     let mut limit_count: u32 = limit;
 
+    #[cfg(feature = "log")]
     println!(
         "received query: query string \"{}\", skip: {}, limit: {}, max_distance {}",
         query_str, skip, limit, max_dis
@@ -241,10 +201,15 @@ pub fn search(query_str: String, skip: u32, limit: u32, max_dis: u32) -> String 
         fill_data(&word_coll, entry);
     }
 
+    #[cfg(feature = "log")]
     print!("result is: ");
+
+    #[cfg(feature = "log")]
     for str in result.iter() {
         print!("{:?}, ", str);
     }
+
+    #[cfg(feature = "log")]
     println!("");
 
     serde_json::to_string_pretty(&json!({

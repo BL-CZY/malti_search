@@ -6,6 +6,8 @@ macro_rules! tail {
     };
 }
 
+pub const LOG_ON: bool = false;
+
 pub fn levdistance(a: &str, b: &str) -> u32 {
     // Levenshtein distance
     if a.is_empty() {
