@@ -2,11 +2,16 @@ pub mod context;
 pub mod fetch;
 pub mod search;
 
-use lazy_static::lazy_static;
-use mongodb::sync::Client;
+use mongodb::Client;
+use once_cell::sync::OnceCell;
 
 const URI: &str = "mongodb://localhost:27017";
 
-lazy_static! {
-    static ref CLIENT: Client = Client::with_uri_str(URI).unwrap();
+static CLIENT: OnceCell<Client> = OnceCell::new();
+
+#[napi]
+pub async fn init() {
+    CLIENT
+        .set(Client::with_uri_str(URI).await.unwrap())
+        .unwrap();
 }
