@@ -1,6 +1,39 @@
+use std::collections::HashSet;
 use std::hash::Hash;
 
 use serde::Serialize;
+
+pub struct Query {
+    pub keyword: String,
+    pub mode: String,
+    pub col_name: String,
+    pub skip: u32,
+    pub limit: u32,
+    pub max_dis: u32,
+    pub found: HashSet<SearchEntry>,
+    pub result: Vec<SearchEntry>,
+}
+
+impl Default for Query {
+    fn default() -> Self {
+        Query::new()
+    }
+}
+
+impl Query {
+    pub fn new() -> Self {
+        Query {
+            keyword: "".into(),
+            mode: "".into(),
+            col_name: "".into(),
+            skip: 0,
+            limit: 10,
+            max_dis: 2,
+            found: HashSet::new(),
+            result: Vec::new(),
+        }
+    }
+}
 
 #[napi(object)]
 #[derive(Debug, Clone, Serialize)]
@@ -26,27 +59,28 @@ impl SearchEntry {
     pub fn from_key(key: &str) -> Self {
         SearchEntry {
             key: key.into(),
-            word: "".into(),
-            pos: "".into(),
-            en: vec![],
-            matched: "".into(),
+            ..Default::default()
         }
     }
 
     pub fn from_key_match(key: &str, matched: &str) -> Self {
         SearchEntry {
             key: key.into(),
-            word: "".into(),
-            pos: "".into(),
-            en: vec![],
             matched: matched.into(),
+            ..Default::default()
         }
+    }
+}
+
+impl Default for SearchEntry {
+    fn default() -> Self {
+        SearchEntry::new()
     }
 }
 
 impl PartialEq for SearchEntry {
     fn eq(&self, other: &Self) -> bool {
-        return self.key == other.key;
+        self.key == other.key
     }
 }
 
