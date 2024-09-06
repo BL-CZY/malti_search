@@ -5,13 +5,15 @@ use lazy_static::lazy_static;
 use crate::structs::SearchEntry;
 
 lazy_static! {
-    pub static ref SEARCH_CONTEXT: Mutex<HashMap<String, Vec<String>>> = Mutex::new(HashMap::new());
+    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<String>>> =
+        Mutex::new(HashMap::new());
 }
 
 const CONTEXT_LIMIT: usize = 1024;
 
 pub fn collect_context_words(
     keyword: &str,
+    mode: &str,
     skip_count: &mut u32,
     limit_count: &mut u32,
 ) -> Result<Vec<SearchEntry>, ()> {
@@ -24,12 +26,14 @@ pub fn collect_context_words(
         }
     };
 
-    if !guard.contains_key(keyword) {
+    let key = (keyword.to_string(), mode.to_string());
+
+    if !guard.contains_key(&key) {
         return Err(());
     }
 
     let result = guard
-        .get(keyword)
+        .get(&key)
         .unwrap()
         .iter()
         .skip(*skip_count as usize)
@@ -40,7 +44,7 @@ pub fn collect_context_words(
     Ok(result)
 }
 
-pub fn append_context(keyword: &str, input: &Vec<SearchEntry>) {
+pub fn append_context(keyword: &str, mode: &str, input: &Vec<SearchEntry>) {
     let mut guard = match SEARCH_CONTEXT.lock() {
         Ok(g) => g,
         Err(poisoned) => {
@@ -54,14 +58,13 @@ pub fn append_context(keyword: &str, input: &Vec<SearchEntry>) {
         return;
     }
 
-    if guard.contains_key(keyword) {
-        *guard.get_mut(keyword).unwrap() = input.iter().map(|entry| entry.key.clone()).collect();
+    let key = (keyword.to_string(), mode.to_string());
+
+    if guard.contains_key(&key) {
+        *guard.get_mut(&key).unwrap() = input.iter().map(|entry| entry.key.clone()).collect();
 
         return;
     }
 
-    guard.insert(
-        keyword.to_string(),
-        input.iter().map(|entry| entry.key.clone()).collect(),
-    );
+    guard.insert(key, input.iter().map(|entry| entry.key.clone()).collect());
 }
