@@ -1,11 +1,12 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use lazy_static::lazy_static;
+use mongodb::bson::oid::ObjectId;
 
 use crate::structs::{Query, SearchEntry};
 
 lazy_static! {
-    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<String>>> =
+    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<ObjectId>>> =
         Mutex::new(HashMap::new());
 }
 

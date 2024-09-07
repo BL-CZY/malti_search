@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 
+use mongodb::bson::oid::ObjectId;
 use serde::Serialize;
 
 pub struct Query {
@@ -35,10 +36,18 @@ impl Query {
     }
 }
 
-#[napi(object)]
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchResult<'a> {
+    pub key: String,
+    pub word: &'a str,
+    pub pos: &'a str,
+    pub en: &'a Vec<String>,
+    pub matched: &'a str,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchEntry {
-    pub key: String,
+    pub key: ObjectId,
     pub word: String,
     pub pos: String,
     pub en: Vec<String>,
@@ -48,7 +57,7 @@ pub struct SearchEntry {
 impl SearchEntry {
     pub fn new() -> Self {
         SearchEntry {
-            key: "".into(),
+            key: ObjectId::new(),
             word: "".into(),
             pos: "".into(),
             en: vec![],
@@ -56,16 +65,16 @@ impl SearchEntry {
         }
     }
 
-    pub fn from_key(key: &str) -> Self {
+    pub fn from_key(key: &ObjectId) -> Self {
         SearchEntry {
-            key: key.into(),
+            key: key.to_owned(),
             ..Default::default()
         }
     }
 
-    pub fn from_key_match(key: &str, matched: &str) -> Self {
+    pub fn from_key_match(key: &ObjectId, matched: &str) -> Self {
         SearchEntry {
-            key: key.into(),
+            key: key.to_owned(),
             matched: matched.into(),
             ..Default::default()
         }

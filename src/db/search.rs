@@ -2,13 +2,14 @@ use super::{
     context::{append_context, collect_context_words},
     CLIENT,
 };
+use rayon::prelude::*;
 
+use crate::structs::{Query, SearchResult};
 use crate::{db::context::SEARCH_CONTEXT, structs::SearchEntry};
-use crate::{structs::Query, utils};
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, Document},
-    Cursor, {Collection, Database},
+    bson::{doc, Bson, Document},
+    Collection, Database,
 };
 use serde_json::{self, json};
 
@@ -34,8 +35,8 @@ fn filter_res(search: &[SearchEntry], query: &mut Query) {
 }
 
 fn push_word(doc: &Document, matched: &str, distance: u32, result: &mut Vec<(SearchEntry, u32)>) {
-    if let Ok(val) = doc.get_str("word") {
-        result.push((SearchEntry::from_key_match(val, matched), distance));
+    if let Some(Bson::ObjectId(id)) = doc.get("word") {
+        result.push((SearchEntry::from_key_match(&id, matched), distance));
     }
 }
 
@@ -46,19 +47,20 @@ async fn regular_search(
 ) -> Vec<SearchEntry> {
     let mut result: Vec<SearchEntry> = vec![];
     let mut temp_result: Vec<(SearchEntry, u32)> = vec![];
-    let mut cursor: Cursor<Document>;
-    match tokens_col.find(None, None).await {
-        Ok(res) => cursor = res,
+
+    let mut cursor = match tokens_col.find(doc! {}).await {
+        Ok(res) => res,
         Err(_) => {
             #[cfg(feature = "log")]
             println!("there is an error trying to find the keyword {}", keyword);
             return vec![];
         }
-    }
+    };
 
     while let Ok(Some(doc)) = cursor.try_next().await {
+        //print!("{}", doc.get_str("exact").unwrap());
         if let Ok(val) = doc.get_str("exact") {
-            let dis = utils::levdistance(val, keyword);
+            let dis = levenshtein::levenshtein(val, keyword) as u32;
             if dis <= max_dis {
                 push_word(&doc, val, dis, &mut temp_result);
             }
@@ -106,18 +108,18 @@ async fn handle_keyword(query: &mut Query, db: &Database) {
 
 async fn fill_data(coll: &Collection<Document>, result: &mut SearchEntry) {
     let doc = if let Ok(Some(res)) = coll
-        .find_one(
-            doc! {
-                "word": result.key.clone(),
-            },
-            None,
-        )
+        .find_one(doc! {
+            "_id": result.key.clone(),
+        })
         .await
     {
         res
     } else {
         return;
     };
+
+    #[cfg(feature = "log")]
+    println!("found document while filling data: {}", doc);
 
     result.word = if let Ok(val) = doc.get_str("surf") {
         val.into()
@@ -190,8 +192,20 @@ pub async fn search(
     #[cfg(feature = "log")]
     println!();
 
+    let result = query
+        .result
+        .par_iter()
+        .map(move |v| SearchResult {
+            key: v.key.to_string(),
+            word: &v.word,
+            pos: &v.pos,
+            en: &v.en,
+            matched: &v.matched,
+        })
+        .collect::<Vec<SearchResult>>();
+
     serde_json::to_string_pretty(&json!({
-        "result": query.result
+        "result": result,
     }))
     .unwrap()
 }
