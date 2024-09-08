@@ -6,13 +6,14 @@ use serde::Serialize;
 
 pub struct Query {
     pub keyword: String,
-    pub mode: String,
-    pub col_name: String,
     pub skip: u32,
     pub limit: u32,
     pub max_dis: u32,
     pub found: HashSet<SearchEntry>,
     pub result: Vec<SearchEntry>,
+    pub mode: String,
+    pub mt: bool,
+    pub en: bool,
 }
 
 impl Default for Query {
@@ -25,13 +26,14 @@ impl Query {
     pub fn new() -> Self {
         Query {
             keyword: "".into(),
-            mode: "".into(),
-            col_name: "".into(),
             skip: 0,
             limit: 10,
             max_dis: 2,
             found: HashSet::new(),
             result: Vec::new(),
+            mode: "".into(),
+            mt: true,
+            en: true,
         }
     }
 }

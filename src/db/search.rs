@@ -1,15 +1,14 @@
 use super::{
     context::{append_context, collect_context_words},
-    CLIENT,
+    CLIENT, EN_TOKENS, MT_TOKENS,
 };
 use rayon::prelude::*;
 
 use crate::structs::{Query, SearchResult};
 use crate::{db::context::SEARCH_CONTEXT, structs::SearchEntry};
-use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, Bson, Document},
-    Collection, Database,
+    bson::{doc, Document},
+    Collection,
 };
 use serde_json::{self, json};
 
@@ -34,35 +33,24 @@ fn filter_res(search: &[SearchEntry], query: &mut Query) {
     }
 }
 
-fn push_word(doc: &Document, matched: &str, distance: u32, result: &mut Vec<(SearchEntry, u32)>) {
-    if let Some(Bson::ObjectId(id)) = doc.get("word") {
-        result.push((SearchEntry::from_key_match(&id, matched), distance));
-    }
-}
-
-async fn regular_search(
-    keyword: &str,
-    tokens_col: &Collection<Document>,
-    max_dis: u32,
-) -> Vec<SearchEntry> {
+async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
     let mut result: Vec<SearchEntry> = vec![];
     let mut temp_result: Vec<(SearchEntry, u32)> = vec![];
 
-    let mut cursor = match tokens_col.find(doc! {}).await {
-        Ok(res) => res,
-        Err(_) => {
-            #[cfg(feature = "log")]
-            println!("there is an error trying to find the keyword {}", keyword);
-            return vec![];
+    if query.mt {
+        for (val, id) in MT_TOKENS.get().unwrap().iter() {
+            let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
+            if dis <= query.max_dis {
+                temp_result.push((SearchEntry::from_key_match(&id, val), dis));
+            }
         }
-    };
+    }
 
-    while let Ok(Some(doc)) = cursor.try_next().await {
-        //print!("{}", doc.get_str("exact").unwrap());
-        if let Ok(val) = doc.get_str("exact") {
-            let dis = levenshtein::levenshtein(val, keyword) as u32;
-            if dis <= max_dis {
-                push_word(&doc, val, dis, &mut temp_result);
+    if query.en {
+        for (val, id) in EN_TOKENS.get().unwrap().iter() {
+            let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
+            if dis <= query.max_dis {
+                temp_result.push((SearchEntry::from_key_match(&id, val), dis));
             }
         }
     }
@@ -78,15 +66,15 @@ async fn regular_search(
     result
 }
 
-async fn handle_regular_search(query: &mut Query, col: &Collection<Document>) {
-    let search_res: Vec<SearchEntry> = regular_search(&query.keyword, col, query.max_dis).await;
+async fn handle_regular_search(query: &mut Query) {
+    let search_res: Vec<SearchEntry> = regular_search(query).await;
     append_context(&query, &search_res);
 
     filter_res(&search_res, query);
 }
 
 // returns true if limit reaches 0
-async fn handle_keyword(query: &mut Query, db: &Database) {
+async fn handle_keyword(query: &mut Query) {
     if let Ok(res) = collect_context_words(query) {
         query.result = res;
         #[cfg(feature = "log")]
@@ -95,7 +83,7 @@ async fn handle_keyword(query: &mut Query, db: &Database) {
     }
 
     // regular search
-    handle_regular_search(query, &db.collection(&query.col_name)).await;
+    handle_regular_search(query).await;
 
     #[cfg(feature = "log")]
     println!(
@@ -154,19 +142,21 @@ pub async fn search(
     }
 
     let db = CLIENT.get().unwrap().database("local");
+    let (mt, en): (bool, bool) = match mode.as_str() {
+        "m" => (true, false),
+        "e" => (false, true),
+        "b" => (true, true),
+        _ => (true, true),
+    };
 
     let mut query = Query {
         keyword: query_str.clone().replace("-", " "),
-        col_name: match mode.as_str() {
-            "m" => "mt-tokens".to_string(),
-            "e" => "en-tokens".to_string(),
-            "b" => "tokens".to_string(),
-            _ => "tokens".to_string(),
-        },
         skip,
         limit,
         max_dis,
-        mode: mode.clone(),
+        mt,
+        en,
+        mode,
         ..Default::default()
     };
 
@@ -176,7 +166,7 @@ pub async fn search(
         query.keyword, query.skip, query.limit, query.max_dis
     );
 
-    handle_keyword(&mut query, &db).await;
+    handle_keyword(&mut query).await;
 
     let word_col: Collection<Document> = db.collection("words");
     for entry in query.result.iter_mut() {
