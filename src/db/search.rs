@@ -38,24 +38,42 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
     let mut temp_result: Vec<(SearchEntry, u32)> = vec![];
 
     if query.mt {
-        for (val, id) in MT_TOKENS.get().unwrap().iter() {
-            let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
-            if dis <= query.max_dis {
-                temp_result.push((SearchEntry::from_key_match(&id, val), dis));
-            }
-        }
+        temp_result.extend(
+            MT_TOKENS
+                .get()
+                .unwrap()
+                .par_iter()
+                .filter_map(|(val, id)| {
+                    let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
+                    if dis <= query.max_dis {
+                        Some((SearchEntry::from_key_match(&id, &query.keyword), dis))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<(SearchEntry, u32)>>(),
+        );
     }
 
     if query.en {
-        for (val, id) in EN_TOKENS.get().unwrap().iter() {
-            let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
-            if dis <= query.max_dis {
-                temp_result.push((SearchEntry::from_key_match(&id, val), dis));
-            }
-        }
+        temp_result.extend(
+            EN_TOKENS
+                .get()
+                .unwrap()
+                .par_iter()
+                .filter_map(|(val, id)| {
+                    let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
+                    if dis <= query.max_dis {
+                        Some((SearchEntry::from_key_match(&id, &query.keyword), dis))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<(SearchEntry, u32)>>(),
+        );
     }
 
-    temp_result.sort_by(|a, b| a.1.cmp(&b.1));
+    temp_result.par_sort_by(|a, b| a.1.cmp(&b.1));
 
     for (str, dis) in temp_result.iter() {
         result.push(str.clone());
