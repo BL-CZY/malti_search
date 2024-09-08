@@ -80,6 +80,8 @@ async fn regular_search(
 
 async fn handle_regular_search(query: &mut Query, col: &Collection<Document>) {
     let search_res: Vec<SearchEntry> = regular_search(&query.keyword, col, query.max_dis).await;
+    append_context(&query, &search_res);
+
     filter_res(&search_res, query);
 }
 
@@ -94,9 +96,6 @@ async fn handle_keyword(query: &mut Query, db: &Database) {
 
     // regular search
     handle_regular_search(query, &db.collection(&query.col_name)).await;
-
-    // update context
-    append_context(&query.keyword, &query.mode, &query.result);
 
     #[cfg(feature = "log")]
     println!(
@@ -150,6 +149,10 @@ pub async fn search(
     max_dis: u32,
     mode: String,
 ) -> String {
+    if query_str.is_empty() {
+        return "".into();
+    }
+
     let db = CLIENT.get().unwrap().database("local");
 
     let mut query = Query {
@@ -175,10 +178,9 @@ pub async fn search(
 
     handle_keyword(&mut query, &db).await;
 
-    let word_coll: Collection<Document> = db.collection("words");
-
+    let word_col: Collection<Document> = db.collection("words");
     for entry in query.result.iter_mut() {
-        fill_data(&word_coll, entry).await;
+        fill_data(&word_col, entry).await;
     }
 
     #[cfg(feature = "log")]

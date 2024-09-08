@@ -6,7 +6,7 @@ use mongodb::bson::oid::ObjectId;
 use crate::structs::{Query, SearchEntry};
 
 lazy_static! {
-    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<ObjectId>>> =
+    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<(ObjectId, String)>>> =
         Mutex::new(HashMap::new());
 }
 
@@ -34,13 +34,13 @@ pub fn collect_context_words(query: &Query) -> Result<Vec<SearchEntry>, String> 
         .iter()
         .skip(query.skip as usize)
         .take(query.limit as usize)
-        .map(|str| SearchEntry::from_key(str))
+        .map(|(id, matched)| SearchEntry::from_key_match(id, matched))
         .collect::<Vec<SearchEntry>>();
 
     Ok(result)
 }
 
-pub fn append_context(keyword: &str, mode: &str, input: &[SearchEntry]) {
+pub fn append_context(query: &Query, result: &[SearchEntry]) {
     let mut guard = match SEARCH_CONTEXT.lock() {
         Ok(g) => g,
         Err(poisoned) => {
@@ -54,13 +54,22 @@ pub fn append_context(keyword: &str, mode: &str, input: &[SearchEntry]) {
         return;
     }
 
-    let key = (keyword.to_string(), mode.to_string());
+    let key = (query.keyword.to_string(), query.mode.to_string());
 
     if guard.contains_key(&key) {
-        *guard.get_mut(&key).unwrap() = input.iter().map(|entry| entry.key.clone()).collect();
+        *guard.get_mut(&key).unwrap() = result
+            .iter()
+            .map(|entry| (entry.key.clone(), entry.matched.clone()))
+            .collect();
 
         return;
     }
 
-    guard.insert(key, input.iter().map(|entry| entry.key.clone()).collect());
+    guard.insert(
+        key,
+        result
+            .iter()
+            .map(|entry| (entry.key.clone(), entry.matched.clone()))
+            .collect(),
+    );
 }
