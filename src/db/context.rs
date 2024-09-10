@@ -5,8 +5,14 @@ use mongodb::bson::oid::ObjectId;
 
 use crate::structs::{Query, SearchEntry};
 
+#[derive(Hash, PartialEq, Eq, Debug)]
+pub struct ContextKey {
+    keyword: String,
+    mode: String,
+}
+
 lazy_static! {
-    pub static ref SEARCH_CONTEXT: Mutex<HashMap<(String, String), Vec<(ObjectId, String)>>> =
+    pub static ref SEARCH_CONTEXT: Mutex<HashMap<ContextKey, Vec<(ObjectId, String)>>> =
         Mutex::new(HashMap::new());
 }
 
@@ -22,7 +28,10 @@ pub fn collect_context_words(query: &Query) -> Result<Vec<SearchEntry>, String> 
         }
     };
 
-    let key = (query.keyword.clone(), query.mode.clone());
+    let key = ContextKey {
+        keyword: query.keyword.clone(),
+        mode: query.mode.clone(),
+    };
 
     if !guard.contains_key(&key) {
         return Err("Already".into());
@@ -54,12 +63,15 @@ pub fn append_context(query: &Query, result: &[SearchEntry]) {
         return;
     }
 
-    let key = (query.keyword.to_string(), query.mode.to_string());
+    let key = ContextKey {
+        keyword: query.keyword.to_string(),
+        mode: query.mode.to_string(),
+    };
 
     if guard.contains_key(&key) {
         *guard.get_mut(&key).unwrap() = result
             .iter()
-            .map(|entry| (entry.key.clone(), entry.matched.clone()))
+            .map(|entry| (entry.key, entry.matched.clone()))
             .collect();
 
         return;
@@ -69,7 +81,7 @@ pub fn append_context(query: &Query, result: &[SearchEntry]) {
         key,
         result
             .iter()
-            .map(|entry| (entry.key.clone(), entry.matched.clone()))
+            .map(|entry| (entry.key, entry.matched.clone()))
             .collect(),
     );
 }

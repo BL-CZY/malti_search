@@ -4,8 +4,11 @@ use super::{
 };
 use rayon::prelude::*;
 
+#[cfg(feature = "log")]
+use crate::db::context::SEARCH_CONTEXT;
+
+use crate::structs::SearchEntry;
 use crate::structs::{Query, SearchResult};
-use crate::{db::context::SEARCH_CONTEXT, structs::SearchEntry};
 use mongodb::{
     bson::{doc, Document},
     Collection,
@@ -46,7 +49,7 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
                 .filter_map(|(val, id)| {
                     let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
                     if dis <= query.max_dis {
-                        Some((SearchEntry::from_key_match(&id, &query.keyword), dis))
+                        Some((SearchEntry::from_key_match(id, val), dis))
                     } else {
                         None
                     }
@@ -64,7 +67,7 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
                 .filter_map(|(val, id)| {
                     let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
                     if dis <= query.max_dis {
-                        Some((SearchEntry::from_key_match(&id, &query.keyword), dis))
+                        Some((SearchEntry::from_key_match(id, val), dis))
                     } else {
                         None
                     }
@@ -75,10 +78,10 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
 
     temp_result.par_sort_by(|a, b| a.1.cmp(&b.1));
 
-    for (str, dis) in temp_result.iter() {
-        result.push(str.clone());
+    for val in temp_result.iter() {
+        result.push(val.0.clone());
         #[cfg(feature = "log")]
-        println!("found word {:?} with edit distance {}", str, dis);
+        println!("found word {:?} with edit distance {}", val.0, val.1);
     }
 
     result
@@ -86,7 +89,7 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
 
 async fn handle_regular_search(query: &mut Query) {
     let search_res: Vec<SearchEntry> = regular_search(query).await;
-    append_context(&query, &search_res);
+    append_context(query, &search_res);
 
     filter_res(&search_res, query);
 }
@@ -114,7 +117,7 @@ async fn handle_keyword(query: &mut Query) {
 async fn fill_data(coll: &Collection<Document>, result: &mut SearchEntry) {
     let doc = if let Ok(Some(res)) = coll
         .find_one(doc! {
-            "_id": result.key.clone(),
+            "_id": result.key,
         })
         .await
     {
