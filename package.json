@@ -1,5 +1,5 @@
 {
-  "name": "@jg-tpl/malti_search",
+  "name": "@jg-tpll/malti_search",
   "version": "0.0.1",
   "main": "index.js",
   "types": "index.d.ts",
@@ -191,10 +191,10 @@
     "url": "https://github.com/BL-CZY/malti_search/issues"
   },
   "homepage": "https://github.com/BL-CZY/malti_search#readme",
-  "description": "",
+  "description": "search algorithm for maltilex",
   "optionalDependencies": {
-    "@jg-tpl/malti_search-win32-x64-msvc": "0.0.0",
-    "@jg-tpl/malti_search-darwin-x64": "0.0.0",
-    "@jg-tpl/malti_search-linux-x64-gnu": "0.0.0"
+    "@jg-tpll/malti_search-win32-x64-msvc": "0.0.1",
+    "@jg-tpll/malti_search-darwin-x64": "0.0.1",
+    "@jg-tpll/malti_search-linux-x64-gnu": "0.0.1"
   }
 }
