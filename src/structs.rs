@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::sync::{Arc, Mutex};
 
 use mongodb::bson::oid::ObjectId;
 use serde::Serialize;
@@ -9,7 +10,7 @@ pub struct Query {
     pub skip: u32,
     pub limit: u32,
     pub max_dis: u32,
-    pub found: HashSet<SearchEntry>,
+    pub found: Arc<Mutex<HashSet<ObjectId>>>,
     pub result: Vec<SearchEntry>,
     pub mode: String,
     pub mt: bool,
@@ -29,7 +30,7 @@ impl Query {
             skip: 0,
             limit: 10,
             max_dis: 2,
-            found: HashSet::new(),
+            found: Arc::new(Mutex::new(HashSet::new())),
             result: Vec::new(),
             mode: "".into(),
             mt: true,

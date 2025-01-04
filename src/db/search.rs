@@ -17,21 +17,16 @@ use serde_json::{self, json};
 
 // returns true if the limit is 0
 fn filter_res(search: &[SearchEntry], query: &mut Query) {
-    for res in search.iter() {
-        if !query.found.contains(res) {
-            if query.skip != 0 {
-                query.skip -= 1;
-                continue;
-            } else if query.limit != 0 {
-                query.limit -= 1;
-            } else {
-                #[cfg(feature = "log")]
-                println!("limit {} reached", query.limit);
-                return;
-            }
-
-            query.result.push(res.clone());
-            query.found.insert(res.clone());
+    for _ in search.iter() {
+        if query.skip != 0 {
+            query.skip -= 1;
+            continue;
+        } else if query.limit != 0 {
+            query.limit -= 1;
+        } else {
+            #[cfg(feature = "log")]
+            println!("limit {} reached", query.limit);
+            return;
         }
     }
 }
@@ -48,7 +43,8 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
                 .par_iter()
                 .filter_map(|(val, id)| {
                     let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
-                    if dis <= query.max_dis {
+                    if dis <= query.max_dis && !query.found.lock().unwrap().contains(id) {
+                        query.found.lock().unwrap().insert(*id);
                         Some((SearchEntry::from_key_match(id, val), dis))
                     } else {
                         None
@@ -66,7 +62,8 @@ async fn regular_search(query: &mut Query) -> Vec<SearchEntry> {
                 .par_iter()
                 .filter_map(|(val, id)| {
                     let dis = levenshtein::levenshtein(val, &query.keyword) as u32;
-                    if dis <= query.max_dis {
+                    if dis <= query.max_dis && !query.found.lock().unwrap().contains(id) {
+                        query.found.lock().unwrap().insert(*id);
                         Some((SearchEntry::from_key_match(id, val), dis))
                     } else {
                         None
